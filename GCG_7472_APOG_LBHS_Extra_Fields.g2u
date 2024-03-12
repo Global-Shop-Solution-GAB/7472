@@ -1,0 +1,108 @@
+﻿Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sTemp.Declare(String,"")
+v.Local.bUseRevision.Declare(Boolean,False)
+V.Local.bRet.Declare(Boolean,False)
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.Case(56301)
+		'Get whether using Revision Level
+		F.Global.General.ReadOption(70008,0,False,0,v.Local.bUseRevision)
+		
+		'Add columns if the are not already in bdf
+		F.Intrinsic.BDF.Load("Load","AutomatedPurchaseOrderGeneration-dgvAutoPO-bdf",True)
+		F.Intrinsic.BDF.ReadColumnTitle("Load",V.Local.sTemp)
+		F.Intrinsic.String.IsInString(V.Local.sTemp,"Extra Description",TRUE,V.Local.bRet)
+		F.Intrinsic.Control.If(V.Local.bRet,=,False)
+			F.Intrinsic.BDF.AddColumn("Load","Extra Description","S")
+		F.Intrinsic.Control.EndIf
+		F.Intrinsic.String.IsInString(V.Local.sTemp,"Last 12 Month Usage",TRUE,V.Local.bRet)
+		F.Intrinsic.Control.If(V.Local.bRet,=,False)
+			F.Intrinsic.BDF.AddColumn("Load","Last 12 Month Usage","S")
+		F.Intrinsic.Control.EndIf
+		
+		'Fill extra description from dictionary
+		f.ODBC.Connection!con.OpenCompanyConnection
+		F.Data.Dictionary.CreateFromSQL("dictDesc","con","SELECT RTRIM(LEFT(PART, 17))+'/'+RTRIM(RIGHT(LEFT(PART, 20), 3)) AS PARTREV, RTRIM(REPLACE(REPLACE(REPLACE(TEXT,Char(10),' '),Char(13),' '),Char(9),' ')) AS 'Extra Description' FROM INV_EXTRA_TEXT")
+		F.Data.Dictionary.SetDefaultReturn("dictDesc","")
+		F.Data.Datatable.FillFromDictionary("Load","dictDesc","PartRev","Extra Description")
+		F.Data.Dictionary.Close("dictDesc")
+		
+		'Fill usage from dictionary
+		F.Data.Dictionary.CreateFromSQL("dictUsage","con","SELECT RTRIM(LEFT(PART, 17))+'/'+RTRIM(RIGHT(LEFT(PART, 20), 3)) AS PARTREV, QTY_USAGE_MO_01+QTY_USAGE_MO_02+QTY_USAGE_MO_03+QTY_USAGE_MO_04+QTY_USAGE_MO_05+QTY_USAGE_MO_06+QTY_USAGE_MO_07+QTY_USAGE_MO_08+QTY_USAGE_MO_09+QTY_USAGE_MO_10+QTY_USAGE_MO_11+QTY_USAGE_MO_12 FROM INVENTORY_MSTR")
+		F.Data.Dictionary.SetDefaultReturn("dictUsage",0)
+		F.Data.Datatable.FillFromDictionary("Load","dictUsage","PartRev","Last 12 Month Usage")
+		F.Data.Dictionary.Close("dictUsage")
+		F.ODBC.Connection!con.Close
+		
+		F.Intrinsic.BDF.Save("Load", "AutomatedPurchaseOrderGeneration-dgvAutoPO-bdf")
+	F.Intrinsic.Control.Case(52901)
+		F.Intrinsic.BDF.Load("LBHS","GSS_LotBinHeatSerial-GridViewLines-bdf",True)
+		F.Intrinsic.BDF.ReadColumnTitle("LBHS",V.Local.sTemp)
+		F.Intrinsic.String.IsInString(V.Local.sTemp,"Alt Description 2",True,V.Local.bRet)
+		F.Intrinsic.Control.If(V.Local.bRet.Not)
+			F.Intrinsic.BDF.AddColumn("LBHS","Alt Description 2","String")
+		F.Intrinsic.Control.EndIf
+		F.Intrinsic.String.IsInString(V.Local.sTemp,"Purch Conv. Factor",True,V.Local.bRet)
+		F.Intrinsic.Control.If(V.Local.bRet.Not)
+			F.Intrinsic.BDF.AddColumn("LBHS","Purch Conv. Factor","String")
+		F.Intrinsic.Control.EndIf
+		F.Data.Datatable.AddExpressionColumn("LBHS","PartRev","String","[Part]+'/'+[Revision]")
+		
+		'Fill conversion factor from dictionary
+		F.ODBC.Connection!con.OpenCompanyConnection
+		F.Data.Dictionary.CreateFromSQL("dictConv","con","SELECT RTRIM(LEFT(PART, 17))+'/'+RTRIM(RIGHT(LEFT(PART, 20), 3)) AS PARTREV, FACTOR_CONVERSION FROM INVENTORY_MSTR")
+		F.Data.Dictionary.SetDefaultReturn("dictConv",0)
+		F.Data.Datatable.FillFromDictionary("LBHS","dictConv","PartRev","Purch Conv. Factor")
+		F.Data.Dictionary.Close("dictConv")
+		
+		'Fill alt desc 2 from dictionary
+		F.Data.Dictionary.CreateFromSQL("dictDesc","con","SELECT RTRIM(LEFT(PART, 17))+'/'+RTRIM(RIGHT(LEFT(PART, 20), 3)) AS PARTREV, DESCRIPTION_3 FROM INVENTORY_MST2")
+		F.Data.Dictionary.SetDefaultReturn("dictDesc",0)
+		F.Data.Datatable.FillFromDictionary("LBHS","dictDesc","PartRev","Alt Description 2")
+		F.Data.Dictionary.Close("dictDesc")
+		F.ODBC.Connection!con.Close
+		
+		F.Data.Datatable.RemoveColumn("LBHS","PartRev")
+		F.Intrinsic.BDF.Save("LBHS","GSS_LotBinHeatSerial-GridViewLines-bdf")
+	F.Intrinsic.Control.CaseElse
+		F.Intrinsic.Control.End
+		
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_6740_APOG_EXTRA_DESC.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Exit.Start
+F.Intrinsic.Control.SetErrorHandler("Exit_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Exit_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+Program.Sub.Exit.End
+
+Program.Sub.Comments.Start
+${$5$}$2.0.0.0$}$2
+${$6$}$triley$}$20240312151942384$}$iK6nerqp9nur1h1iSBfRKBBz1ENCgYv6pXwxCmI1yUMY9JnIBmZUp5kcMcCRB8+Y1f46MXgC2CM=
+Program.Sub.Comments.End
